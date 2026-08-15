@@ -1,6 +1,6 @@
 # Godot Mobile Keyboard Disabler
 
-A toggle Button in the main toolbar to disable the Android virtual keyboard while editing code on the Scripts screen.
+A Toggle Button in the main toolbar to disable the Android virtual keyboard while editing code on the Scripts screen.
 
 # Quick Start
 
