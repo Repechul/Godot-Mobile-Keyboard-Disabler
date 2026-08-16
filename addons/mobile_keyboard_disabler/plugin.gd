@@ -19,6 +19,7 @@ func _enter_tree() -> void:
 	_script_editor = EditorInterface.get_script_editor()
 
 	_toggle_button = Button.new()
+	_toggle_button.flat = true
 	_toggle_button.toggle_mode = true
 	_toggle_button.button_pressed = _keyboard_disabled
 	_assign_icon()
@@ -80,8 +81,8 @@ func _assign_icon() -> void:
 func _refresh_button_look() -> void:
 	var has_icon := _toggle_button.icon != null
 	if _keyboard_disabled:
-		_toggle_button.text = "OFF" if has_icon else "Teclado: OFF"
-		_toggle_button.tooltip_text = "Virtual keyboard DISABLED in the Scripts editor. Tap to reactivate it."
+		_toggle_button.text = "OFF" if has_icon else "Keyboard: OFF"
+		_toggle_button.tooltip_text = "Virtual keyboard DISABLED in the Scripts editor.\nTap to reactivate it."
 		_toggle_button.add_theme_color_override("font_color", Color(1.0, 0.5, 0.3))
 		_toggle_button.add_theme_color_override("font_pressed_color", Color(1.0, 0.5, 0.3))
 		_toggle_button.add_theme_color_override("font_hover_color", Color(1.0, 0.5, 0.3))
