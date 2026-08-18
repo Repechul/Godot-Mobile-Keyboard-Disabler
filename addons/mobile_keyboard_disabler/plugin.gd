@@ -1,23 +1,20 @@
 @tool
 extends EditorPlugin
 
-# Keyboard Disabler
-# Añade un botón toggle al CONTAINER_TOOLBAR (barra principal del editor).
-# Cuando está activo, desactiva el teclado virtual de Android mientras se
-# tapea dentro del área de código de la pantalla "Scripts".
+# Adds a toggle button to the CONTAINER_TOOLBAR (editor's main toolbar).
+# When active, it disables Android's on-screen keyboard everywhere text
+# can be entered in the editor: the Script editor, Inspector fields,
+# FileSystem search, rename dialogs, SpinBox number entry, dialogs, etc.
+# New fields created while the toggle is on (a freshly opened dialog, a
+# newly selected node's Inspector row...) are picked up automatically.
 #
-# El estado NO se persiste en EditorSettings a propósito: cada vez que se
-# abre el editor, el toggle vuelve a su valor por defecto (OFF = teclado
-# virtual normal).
+# The state is intentionally NOT persisted in EditorSettings: every time
+# the editor is opened, the toggle starts OFF (normal keyboard behavior).
 
 var _toggle_button: Button
 var _keyboard_disabled: bool = false
-var _script_editor: ScriptEditor
-
 
 func _enter_tree() -> void:
-	_script_editor = EditorInterface.get_script_editor()
-
 	_toggle_button = Button.new()
 	_toggle_button.flat = true
 	_toggle_button.toggle_mode = true
@@ -28,67 +25,81 @@ func _enter_tree() -> void:
 
 	add_control_to_container(CONTAINER_TOOLBAR, _toggle_button)
 
-	if _script_editor and not _script_editor.editor_script_changed.is_connected(_on_editor_script_changed):
-		_script_editor.editor_script_changed.connect(_on_editor_script_changed)
-
+	get_tree().node_added.connect(_on_node_added)
 
 func _exit_tree() -> void:
-	if _script_editor and _script_editor.editor_script_changed.is_connected(_on_editor_script_changed):
-		_script_editor.editor_script_changed.disconnect(_on_editor_script_changed)
+	if get_tree().node_added.is_connected(_on_node_added):
+		get_tree().node_added.disconnect(_on_node_added)
 
-	# Al desactivar el plugin, dejamos el teclado virtual funcionando normal.
-	_apply_virtual_keyboard_state(true)
+	# Leave every field working normally once the plugin unloads.
+		
+	_apply_to_subtree(EditorInterface.get_base_control(), true)
 
 	if _toggle_button:
 		remove_control_from_container(CONTAINER_TOOLBAR, _toggle_button)
 		_toggle_button.queue_free()
 		_toggle_button = null
 
-
 func _on_toggle_pressed(pressed: bool) -> void:
 	_keyboard_disabled = pressed
 	_refresh_button_look()
-	_apply_virtual_keyboard_state(not _keyboard_disabled)
+	
+	# Re-sync every field that already exists; fields created from now on
+	# are caught live by _on_node_added.
+	
+	_apply_to_subtree(EditorInterface.get_base_control(), not _keyboard_disabled)
 
-
-func _on_editor_script_changed(_script: Script) -> void:
-	# Se dispara al abrir un script o cambiar de pestaña: reaplicamos el
-	# estado actual por si el nuevo editor de código aún no lo tiene.
-	_apply_virtual_keyboard_state(not _keyboard_disabled)
-
-
-func _apply_virtual_keyboard_state(keyboard_enabled: bool) -> void:
-	if not _script_editor:
+func _on_node_added(node: Node) -> void:
+	if not (node is LineEdit or node is TextEdit):
 		return
-	for editor in _script_editor.get_open_script_editors():
-		if not editor.has_method("get_base_editor"):
-			continue
-		var base_editor: Control = editor.get_base_editor()
-		if base_editor is TextEdit and "virtual_keyboard_enabled" in base_editor:
-			base_editor.virtual_keyboard_enabled = keyboard_enabled
+	if not "virtual_keyboard_enabled" in node:
+		return
+	if _is_inside_subviewport(node):
+		return
+	node.virtual_keyboard_enabled = not _keyboard_disabled
 
+func _apply_to_subtree(node: Node, keyboard_enabled: bool) -> void:
+	if node is SubViewport:
+		return # Never touch the scene being edited/previewed, only editor UI.
+	if (node is LineEdit or node is TextEdit) and "virtual_keyboard_enabled" in node:
+		node.virtual_keyboard_enabled = keyboard_enabled
+		
+	# include_internal=true, otherwise built-in composite fields (e.g. the
+	# LineEdit inside every SpinBox) are invisible to get_children().
+		
+	for child in node.get_children(true):
+		_apply_to_subtree(child, keyboard_enabled)
+
+func _is_inside_subviewport(node: Node) -> bool:
+	var current := node.get_parent()
+	while current:
+		if current is SubViewport:
+			return true
+		current = current.get_parent()
+	return false
 
 func _assign_icon() -> void:
-	# Intenta usar un ícono nativo del editor; si ninguno existe en el
-	# tema actual, el botón se queda sin ícono y usa solo texto.
+
+	# Tries a native editor icon first; if none exists in the current
+	# theme, the button just falls back to text only.
+
 	var base_control := EditorInterface.get_base_control()
 	for icon_name in ["Keyboard", "KeyboardShortcut", "InputEventKey"]:
 		if base_control.has_theme_icon(icon_name, "EditorIcons"):
 			_toggle_button.icon = base_control.get_theme_icon(icon_name, "EditorIcons")
 			return
 
-
 func _refresh_button_look() -> void:
 	var has_icon := _toggle_button.icon != null
 	if _keyboard_disabled:
 		_toggle_button.text = "OFF" if has_icon else "Keyboard: OFF"
-		_toggle_button.tooltip_text = "Virtual keyboard DISABLED in the Scripts editor.\nTap to reactivate it."
+		_toggle_button.tooltip_text = "Virtual keyboard DISABLED throughout the editor.\nTap to reactivate it."
 		_toggle_button.add_theme_color_override("font_color", Color(1.0, 0.5, 0.3))
 		_toggle_button.add_theme_color_override("font_pressed_color", Color(1.0, 0.5, 0.3))
 		_toggle_button.add_theme_color_override("font_hover_color", Color(1.0, 0.5, 0.3))
 	else:
 		_toggle_button.text = "ON" if has_icon else "Keyboard: ON"
-		_toggle_button.tooltip_text = "Virtual keyboard with normal behavior.\nTap to disable it in the Scripts editor."
+		_toggle_button.tooltip_text = "Virtual keyboard with normal behavior.\nTap to disable it throughout the editor."
 		_toggle_button.remove_theme_color_override("font_color")
 		_toggle_button.remove_theme_color_override("font_pressed_color")
 		_toggle_button.remove_theme_color_override("font_hover_color")
